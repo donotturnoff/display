@@ -1,0 +1,16 @@
+1) open() card
+2) drmModeGetResources() to get resources (connectors, encoders, crtcs, planes, etc and their properties)
+3) drmModeGetConnector() on connector ids (check connection of returned struct). Number of connectors can change at runtime, e.g. daisy-chaining
+4) modes field of returned struct from 3) contains list of mode information for each screen (allow selection, but choose default)
+5) drmIoctl(..., DRM_IOCTL_MODE_CREATE_DUMB, ...) to allocate dumb buffer, drmModeAddFB2() to create framebuffer object from it, drmIoctl(..., DRM_IOCTL_MODE_MAP_DUMB, ...) to map it into my memory space. Ideally, allow non-dumb buffers too at some point, for better performance
+6) iterate over CRTCs from 2), drmModeGetCrtc() to get CRTC information, including supported mode information. Check everything matches up with modes (->mode_valid), then choose a CRTC and encoder
+7) drmSetClientCap(..., DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1) to tell KMS we support universal planes. Maybe do this earlier on in a configuration phase
+8) drmModeGetPlaneResources() to get list of planes, then iterate over them calling drmModeGetPlane() each time to get each plane. Check plane belongs to selected CRTC, and that formats are correct
+9) drmModeObjectGetProperties() then iterate with drmModeGetProperty() to get properties of any object type. Then attach a framebuffer to a plane using properties
+10) Use atomic commits to set the plane's framebuffer or properties (combine multiple changes into one) (e.g. when moving cursor/doing framebuffer update) to avoid bad intermediate states. drmSetClientCap(..., DRM_CLIENT_CAP_ATOMIC, 1), then drmModeAtomicAlloc(), drmModeAtomicAddProperty(), drmModeAtomicCommit(). Set non-blocking flag)
+
+Also do hotplugging with udev, test-only atomic commits, OpenGL(!)
+
+Abstract planes away from windows/cursor: map windows/cursor to new planes if possible, if not then just composite onto an existing plane
+
+dumb buffer drivers also expose DRM_CAP_DUMB_PREFERRED_DEPTH capability for preferred depth (some drivers are unable to allocate dumb buffer of depth different from preferred), and DRM_CAP_DUMB_PREFER_SHADOW to indicate that random access to dumb buffers is very slow, and applications should render somewhere else and batch-copy data to dumb buffer once done.

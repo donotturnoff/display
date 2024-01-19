@@ -1,0 +1,29 @@
+Priority queue for events
+
+Two widget types: input+output / source+sink
+Widgets parametrised over other types, including custom types
+E.g. input<int>, output<struct{int,string}>
+Widgets have default styles, but can be customised
+Widgets can have pipes attached to them, from output to input
+The widget display style can be full or just "connector", which is just a plain connector for a pipe
+Widgets can contain other widgets, e.g. output<widget<?>>, output<output<int>>, output<output<input<?>>*input<?>>. Layout is left up to styling
+input<widget<?>>, input<output<int>> etc allows for drag and drop widgets
+Buttons are input<unit>
+Toggles/checkboxes are input<bool>
+Checkbox groups are TODO
+Radio button groups are input<bool+bool+bool+...+bool>?
+input<Option<?>> allows optional inputs
+Number inputs are input<int>, input<float> etc
+Textboxes are input<string>. Textboxes vs text fields is just a style difference TODO: is max length part of type or a property?
+Inputs generate events on change
+Lists are output<string[]> or whatever. TODO is ordered vs unordered style, property or type? E.g. array vs set?
+
+TODO:
+how to describe layouts in styles
+What exactly should be included in the styles vs types vs properties
+What about more types e.g. lists, sets, arrays
+Scrollbars
+Tabs
+Menubars
+Canvases
+Images
