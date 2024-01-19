@@ -5,6 +5,8 @@ namespace drm {
 
 DRMException::DRMException(const std::string msg) noexcept : std::runtime_error(msg) {}
 
+DRMException::DRMException(const int errnum) noexcept : std::runtime_error(std::strerror(errnum)) {}
+
 DRMException::DRMException(const std::string msg, const int errnum) noexcept :
         std::runtime_error(msg + ": " + std::strerror(errnum)) {}
 

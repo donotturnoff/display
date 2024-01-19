@@ -1,35 +1,93 @@
 #include "drm.h"
+#include <fcntl.h>
 #include <iostream>
 
 namespace drm {
 
-// TODO: remove DRMCardFile
-DRMCard::DRMCard(const std::string& path) : file{path} {}
+DRMCard::DRMCard(const std::string& path) : fd{open_device(path)} {}
 
-int DRMCard::get_fd() const noexcept {
-    return file.get_fd();
+DRMCard::~DRMCard() {
+    // TODO: are these necessary?
+    connectors.clear();
+    encoders.clear();
+    crtcs.clear();
+    planes.clear();
+
+	close(fd);
 }
 
-std::vector<DRMCRTC>& DRMCard::get_crtcs() noexcept {
-    return crtcs;
+DRMCRTC& DRMCard::get_connected_crtc() {
+    for (auto& [id, crtc]: crtcs) {
+        if (crtc.is_connected()) {
+            return crtc;
+        }
+    }
+
+    throw DRMException{"no connected CRTC found"};
 }
 
-std::vector<DRMEncoder>& DRMCard::get_encoders() noexcept {
-    return encoders;
+DRMCRTC& DRMCard::get_crtc_by_id(const uint32_t id) {
+    return crtcs.at(id);
+}
+
+DRMEncoder& DRMCard::get_encoder_by_id(const uint32_t id) {
+    return encoders.at(id);
+}
+
+// TODO: reduce duplication
+DRMPlane& DRMCard::get_unused_overlay_plane(const DRMCRTC& crtc) {
+    // Iterating over plane_ids vector allows us to go in order. TODO: is this necessary?
+    for (const auto id: plane_ids) {
+        auto& plane {planes.at(id)};
+        if (plane.is_overlay_plane() && !plane.is_in_use() && plane.is_compatible_with(crtc)) {
+            return plane;
+        }
+    }
+
+    throw DRMException{"no unused overlay planes compatible with CRTC #" + std::to_string(crtc.get_id())};
+}
+
+DRMPlane& DRMCard::get_unused_primary_plane(const DRMCRTC& crtc) {
+    for (const auto id: plane_ids) {
+        auto& plane {planes.at(id)};
+        if (plane.is_primary_plane() && !plane.is_in_use() && plane.is_compatible_with(crtc)) { // TODO: what about multiple primary planes? Which to return?
+            return plane;
+        }
+    }
+
+    throw DRMException{"no unused primary planes compatible with CRTC #" + std::to_string(crtc.get_id())};
+}
+
+DRMPlane& DRMCard::get_unused_cursor_plane(const DRMCRTC& crtc) {
+    for (const auto id: plane_ids) {
+        auto& plane {planes.at(id)};
+        if (plane.is_cursor_plane() && !plane.is_in_use() && plane.is_compatible_with(crtc)) { // TODO: what about multiple cursor planes? Which to return?
+            return plane;
+        }
+    }
+
+    throw DRMException{"no unused cursor planes compatible with CRTC #" + std::to_string(crtc.get_id())};
 }
 
 void DRMCard::set_capabilities() {
+    if (!supports_dumb_buffers()) {
+        throw DRMException{"dumb buffers not supported"};
+    }
+
     // TODO: set capabilities in one place
     // TODO: handle the cases where setting capabilities fail
     // TODO: make this a config option?
     // TODO: structured logging
-    if (drmSetClientCap(get_fd(), DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1) < 0) {
-        std::cerr << "failed to enable universal planes, continuing" << std::endl;
+    try {
+        enable_universal_planes(); // TODO: for universal planes, ensure each CRTC gets its primary plane
+    } catch (const DRMException& e) {
+        std::cerr << e.what() << " (continuing)" << std::endl;
     }
 
-    if (drmSetClientCap(get_fd(), DRM_CLIENT_CAP_ATOMIC, 1) < 0) {
-        // TODO: handle failure gracefully
-        throw DRMException{"failed to enable atomic commits"};
+    try {
+        enable_atomic_commits();
+    } catch (const DRMException& e) {
+        std::cerr << e.what() << " (continuing)" << std::endl;
     }
 }
 
@@ -37,99 +95,61 @@ void DRMCard::load_resources() {
     connectors.clear();
     encoders.clear();
     crtcs.clear();
+    crtc_ids.clear();
     planes.clear();
 
-    DRMModeResUniquePtr res {drmModeGetResources(file.get_fd()), drmModeFreeResources};
+    DRMModeResUniquePtr res {drmModeGetResources(fd), drmModeFreeResources};
     if (!res) {
         throw DRMException{"cannot fetch resources for card", errno};
     }
 
     for (auto i {0}; i < res->count_connectors; i++) {
-        auto id {res->connectors[i]};
-        DRMModeConnUniquePtr conn {drmModeGetConnector(file.get_fd(), id), drmModeFreeConnector};
-        if (!conn) {
-            throw DRMException{"cannot fetch connector", errno};
-        }
-        connectors.emplace_back(*this, conn.get());
+        const auto id {res->connectors[i]};
+        connectors.emplace(std::piecewise_construct, std::forward_as_tuple(id), std::forward_as_tuple(*this, id));
     }
 
     for (auto i {0}; i < res->count_encoders; i++) {
-        auto id {res->encoders[i]};
-        DRMModeEncoderUniquePtr encoder {drmModeGetEncoder(file.get_fd(), id), drmModeFreeEncoder};
-        if (!encoder) {
-            throw DRMException{"cannot fetch encoder", errno};
-        }
-        encoders.emplace_back(encoder.get());
+        const auto id {res->encoders[i]};
+        encoders.emplace(std::piecewise_construct, std::forward_as_tuple(id), std::forward_as_tuple(*this, id));
     }
 
-    for (auto i {0}; i < res->count_crtcs; i++) {
-        auto id {res->crtcs[i]};
-        DRMModeCRTCUniquePtr crtc {drmModeGetCrtc(file.get_fd(), id), drmModeFreeCrtc};
-        if (!crtc) {
-            throw DRMException{"cannot fetch CRTC", errno};
-        }
-        crtcs.emplace_back(crtc.get());
-    }
-
-    DRMModePlaneResUniquePtr plane_res {drmModeGetPlaneResources(file.get_fd()), drmModeFreePlaneResources};
+    DRMModePlaneResUniquePtr plane_res {drmModeGetPlaneResources(fd), drmModeFreePlaneResources};
     if (!plane_res) {
         throw DRMException{"cannot fetch plane resources for card", errno};
     }
 
-    for (auto i {0}; i < plane_res->count_planes; i++) {
-        auto id {plane_res->planes[i]};
-        DRMModePlaneUniquePtr plane {drmModeGetPlane(file.get_fd(), id), drmModeFreePlane};
-        if (!plane) {
-            throw DRMException{"cannot fetch plane", errno};
-        }
-        planes.emplace_back(plane.get());
+    for (uint32_t i {0}; i < plane_res->count_planes; i++) {
+        const auto id {plane_res->planes[i]};
+        planes.emplace(std::piecewise_construct, std::forward_as_tuple(id), std::forward_as_tuple(*this, id));
+        plane_ids.push_back(id);
+    }
+
+    // Do CRTCs after planes, because the CRTC constructor needs the planes to be loaded to find the primary plane
+    for (auto i {0}; i < res->count_crtcs; i++) {
+        const auto id {res->crtcs[i]};
+        crtcs.emplace(std::piecewise_construct, std::forward_as_tuple(id), std::forward_as_tuple(*this, id, i));
+        crtc_ids.push_back(id);
     }
 }
 
 void DRMCard::configure_connectors() noexcept {
-    for (auto& conn: connectors) {
+    for (auto& [id, conn]: connectors) {
         if (!conn.is_connected()) {
             continue;
         }
 
         try {
-            // TODO: move this logic to select_crtc?
-            auto crtc {conn.get_crtc()};
-            if (!crtc) {
-                crtc = conn.select_crtc();
-            }
-
-            conn.modeset();
+            auto& crtc {conn.select_crtc()};
+            crtc.modeset(conn);
         } catch (const DRMException& e) {
-            std::cerr << e.what() << std::endl;
+            std::cerr << "failed to configure connector #" << id << ": " << e.what() << std::endl;
         }
     }
-}
-
-// TODO: remove? add to new DRMAtomicReq class?
-void DRMCard::add_property(drmModeAtomicReq* req, const uint32_t object_id,
-        const uint32_t object_type, const char* prop_name, const uint64_t value) {
-
-    uint32_t prop_id {0};
-    auto props {drmModeObjectGetProperties(get_fd(), object_id, object_type)};
-    for (auto i {0}; i < props->count_props; i++) {
-        auto prop {drmModeGetProperty(fd, props->props[i])};
-        if (strcmp(prop->name, prop_name) == 0) {
-            prop_id = prop->prop_id;
-            break;
-        }
-    }
-
-    if (!prop_id) {
-        throw DRMException{"property " + prop_name + " does not exist"};
-    }
-
-    drmModeAtomicAddProperty(req, object_id, prop_id, value);
 }
 
 uint64_t DRMCard::fetch_capability(const uint64_t capability) const {
     uint64_t value;
-    if (drmGetCap(file.get_fd(), capability, &value) < 0) {
+    if (drmGetCap(fd, capability, &value) < 0) {
         throw DRMException{"cannot check capability"};
     }
     return value;
@@ -156,6 +176,27 @@ uint64_t DRMCard::max_cursor_width() const {
 /* Hint to userspace of max cursor height */
 uint64_t DRMCard::max_cursor_height() const {
     return fetch_capability(DRM_CAP_CURSOR_HEIGHT);
+}
+
+void DRMCard::enable_universal_planes() {
+    if (drmSetClientCap(fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1) < 0) {
+        throw DRMException{"failed to enable universal planes"};
+    }
+}
+
+void DRMCard::enable_atomic_commits() {
+    if (drmSetClientCap(fd, DRM_CLIENT_CAP_ATOMIC, 1) < 0) {
+        throw DRMException{"failed to enable atomic commits"};
+    }
+    atomic_commits_enabled = true;
+}
+
+int DRMCard::open_device(const std::string& path) const {
+	auto fd {open(path.c_str(), O_CLOEXEC | O_RDWR)};
+	if (fd < 0) {
+		throw DRMException{"cannot open card", errno};
+	}
+	return fd;
 }
 
 }

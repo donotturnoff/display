@@ -12,3 +12,5 @@
 Also do hotplugging with udev, test-only atomic commits, OpenGL(!)
 
 Abstract planes away from windows/cursor: map windows/cursor to new planes if possible, if not then just composite onto an existing plane
+
+dumb buffer drivers also expose DRM_CAP_DUMB_PREFERRED_DEPTH capability for preferred depth (some drivers are unable to allocate dumb buffer of depth different from preferred), and DRM_CAP_DUMB_PREFER_SHADOW to indicate that random access to dumb buffers is very slow, and applications should render somewhere else and batch-copy data to dumb buffer once done.
