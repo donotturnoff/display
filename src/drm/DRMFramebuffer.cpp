@@ -10,9 +10,10 @@ namespace drm {
 
 // TODO: derive bpp from pixel_format
 // TODO: reject attempts to make buffers that are too small (< 6x6? Determine from properties?)
-DRMFramebuffer::DRMFramebuffer(const DRMCard& card, const uint32_t w, const uint32_t h,
+// TODO: disallow buffer_type == MEMORY
+DRMFramebuffer::DRMFramebuffer(const DRMCard& card, DRMPlane& plane, const uint32_t w, const uint32_t h,
         const uint32_t bpp, const uint32_t pixel_format) :
-        card{card}, info{h, w, bpp, 0, 0, 0, 0}, pixel_format{pixel_format}
+        card{card}, plane{plane}, info{h, w, bpp, 0, 0, 0, 0}, pixel_format{pixel_format}
 {
     const auto fd {card.get_fd()};
 
@@ -56,6 +57,8 @@ DRMFramebuffer::~DRMFramebuffer() {
     if (drmIoctl(fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy_buf) < 0) {
         std::cerr << "failed to destroy dumb buffer" << std::endl;
     }
+
+    plane.release();
 }
 
 void DRMFramebuffer::create_dumb_buffer() {
@@ -95,5 +98,6 @@ void DRMFramebuffer::map_dumb_buffer() {
         throw DRMException{"failed to map dumb buffer", errno};
     }
 }
+
 
 }

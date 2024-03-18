@@ -18,6 +18,14 @@ Textboxes are input<string>. Textboxes vs text fields is just a style difference
 Inputs generate events on change
 Lists are output<string[]> or whatever. TODO is ordered vs unordered style, property or type? E.g. array vs set?
 
+Parent has a visible size and an actual size (allowing children to be visibly outside of parent) ???
+Root is an Output<*>, allowing anything to be a child of it. All its children are candidates for using planes.
+Cursor is an Output<Image> or something
+Any widget can request a plane or a regular buffer
+Use LayoutManagers. Root can have a flexible layout manager, or can have grid, etc
+
+DRMCRTC::find_unused_overlay_plane() etc
+
 TODO:
 how to describe layouts in styles
 What exactly should be included in the styles vs types vs properties

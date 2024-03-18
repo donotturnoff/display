@@ -4,7 +4,12 @@
 
 namespace drm {
 
-DRMCard::DRMCard(const std::string& path) : fd{open_device(path)} {}
+DRMCard::DRMCard(const std::string& path) : fd{open_device(path)} {
+    // TODO: combine setup functions
+    set_capabilities();
+    load_resources();
+    configure_connectors();
+}
 
 DRMCard::~DRMCard() {
     // TODO: are these necessary?

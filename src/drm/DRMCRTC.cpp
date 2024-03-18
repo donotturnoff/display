@@ -4,12 +4,7 @@
 
 namespace drm {
 
-DRMCRTC::DRMCRTC(DRMCard& card, const uint32_t id, const uint32_t index) noexcept : card{card}, id{id}, index{index},
-    primary_plane{card.get_unused_primary_plane(*this)}, cursor_plane{card.get_unused_cursor_plane(*this)} // TODO: ensure using this here is safe
-{
-    primary_plane.claim_by(*this);
-    cursor_plane.claim_by(*this);
-}
+DRMCRTC::DRMCRTC(DRMCard& card, const uint32_t id, const uint32_t index) noexcept : card{card}, id{id}, index{index} {}
 
 bool DRMCRTC::is_connected() const noexcept {
     // TODO: make sure this is synchronised
@@ -51,23 +46,32 @@ void DRMCRTC::modeset(const DRMConnector& conn) {
             }
         }
 
-        primary_plane.configure_framebuffers(get_width(), get_height(), 32, DRM_FORMAT_ARGB8888);
-
     } catch (const DRMException& e) {
         throw DRMException{"failed to modeset", e};
     }
 }
 
-DRMPlane& DRMCRTC::claim_overlay_plane() const {
-    auto& plane {card.get_unused_overlay_plane(*this)};
-    plane.claim_by(*this);
-    return plane;
-}
-
-
 void DRMCRTC::add_connector(const DRMConnector& conn) noexcept {
     // TODO: make sure connector isn't connected elsewhere first
     connector_ids.push_back(conn.get_id());
+}
+
+DRMPlane& DRMCRTC::claim_unused_primary_plane() const {
+    auto& plane {card.get_unused_primary_plane(*this)};
+    plane.claim();
+    return plane;
+}
+
+DRMPlane& DRMCRTC::claim_unused_cursor_plane() const {
+    auto& plane {card.get_unused_cursor_plane(*this)};
+    plane.claim();
+    return plane;
+}
+
+DRMPlane& DRMCRTC::claim_unused_overlay_plane() const {
+    auto& plane {card.get_unused_overlay_plane(*this)};
+    plane.claim();
+    return plane;
 }
 
 DRMModeCRTCUniquePtr DRMCRTC::fetch_resource() const {

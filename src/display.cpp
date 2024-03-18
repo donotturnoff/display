@@ -1,49 +1,29 @@
-#include "drm/drm.h"
+#include "gui/gui.h"
 #include <iostream>
 #include <drm_fourcc.h>
 #include <cstring>
 #include <cstdio>
 
 int main(void) {
-    drm::DRMCard card {"/dev/dri/card0"};
+    gui::DisplayManager::the();
 
-    // TODO: combine setup functions
-    card.set_capabilities();
-    card.load_resources();
-    card.configure_connectors();
+    drm::ScreenBitmap screen;
+    screen.fill(style::Colour::white());
 
-    // TODO: this isn't an ideal developer interface
-    auto& crtc {card.get_connected_crtc()};
-    auto& plane {crtc.claim_overlay_plane()};
-    plane.configure_framebuffers(300, 200, 32, DRM_FORMAT_ARGB8888);
-    plane.set_pos(200, 400);
+    drm::Bitmap bmp {100, 100};
+    bmp.fill(style::Colour::blue(0x7F));
 
-    uint8_t* buf {plane.get_back_buffer().get_buffer()};
-    for (uint32_t i {0}; i < plane.get_back_buffer().get_size(); i+=4) {
-        buf[i] = 0xFF;
-        buf[i+1] = 0xFF;
-        //buf2[i+2] = 0xFF;
-        buf[i+3] = 0xFF;
-    }
+    drm::Bitmap bmp2 {500, 50};
+    bmp2.fill(style::Colour::red(0x7F));
 
-    uint8_t* buf2 {crtc.get_back_buffer().get_buffer()};
-    for (uint32_t i {0}; i < crtc.get_back_buffer().get_size(); i+=4) {
-        buf2[i] = 0xFF;
-        buf2[i+1] = 0x00;
-        buf2[i+2] = 0x00;
-        buf2[i+3] = 0xFF;
-    }
+    bmp2.render(bmp, 10, -20000);
+    std::cerr << "HERE" << std::endl;
+    bmp.render(screen, 200, 200);
 
-    crtc.repaint();
-    plane.repaint();
+    bmp2.fill(style::Colour::red(0x7F));
+    bmp2.render(screen, 0, 0);
 
-    auto& plane2 {crtc.claim_overlay_plane()};
-    plane2.configure_framebuffers(50, 50, 32, DRM_FORMAT_ARGB8888);
-    plane2.repaint();
-
-    auto buf3 {plane2.get_back_buffer().get_buffer()};
-    std::memset(buf3, 0x80, plane2.get_back_buffer().get_size());
-    plane2.repaint();
+    screen.render();
 
     while(1);
 }

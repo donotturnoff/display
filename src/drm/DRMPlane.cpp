@@ -5,16 +5,9 @@ namespace drm {
 
 DRMPlane::DRMPlane(DRMCard& card, const uint32_t id) noexcept : card{card}, id{id} {}
 
-void DRMPlane::configure_framebuffers(const uint32_t w, const uint32_t h, const uint32_t bpp,
-        const uint32_t pixel_format) {
-    fbs[0].emplace(card, w, h, bpp, pixel_format);
-    fbs[1].emplace(card, w, h, bpp, pixel_format);
-}
-
-// Switches the back and front buffer
-void DRMPlane::repaint() {
+void DRMPlane::repaint(const DRMCRTC& crtc, DRMFramebuffer& fb, const int32_t x, const int32_t y) {
     try {
-        const auto& fb {get_back_buffer()};
+        const auto crtc_id {crtc.get_id()};
 
         const auto fb_id {fb.get_id()};
         const auto fb_w {fb.get_width()};
@@ -47,17 +40,6 @@ void DRMPlane::repaint() {
     } catch (const DRMException& e) {
         throw DRMException{"failed to repaint plane framebuffer", e};
     }
-
-    back ^= 1;
-}
-
-void DRMPlane::claim_by(const DRMCRTC& crtc) {
-    if (!is_compatible_with(crtc)) {
-        throw DRMException{"CRTC #" + std::to_string(crtc.get_id()) +
-            " trying to claim incompatible plane #" + std::to_string(id)};
-    }
-
-    crtc_id = crtc.get_id();
 }
 
 DRMModePlaneUniquePtr DRMPlane::fetch_resource() const {
@@ -90,14 +72,6 @@ bool DRMPlane::is_compatible_with(const DRMCRTC& crtc) const {
     const auto possible_crtcs {get_possible_crtcs()};
 
     return (possible_crtcs & crtc_bit) != 0;
-}
-
-DRMFramebuffer& DRMPlane::get_back_buffer() {
-    auto& fb {fbs[back]};
-    if (!fb) {
-        throw DRMException{"no back buffer"};
-    }
-    return fb.value();
 }
 
 uint32_t DRMPlane::get_possible_crtcs() const {

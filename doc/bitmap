@@ -1,0 +1,28 @@
+Regular backing
+---------------
+Window constructor creates Bitmap
+Bitmap creates Buffer
+Buffer allocates memory
+
+Hardware backing for window
+---------------------------
+Window constructor creates Bitmap
+Bitmap creates DRMFramebuffer
+DRMFramebuffer requests overlay DRMPlane (fails if there are none free - fall back to regular in caller?)
+DRMPlane is attached to DRMCRTC (from DisplayManager)
+DRMFramebuffer allocates memory via DRM API
+
+Window destructor destroys Bitmap
+~Bitmap destroys DRMFramebuffer
+~DRMFramebuffer releases DRMPlane (marks as unused)
+
+Hardware backing for cursor/root widget
+---------------------------------------
+Constructor creates Bitmap
+Bitmap creates DRMFramebuffer
+DRMFramebuffer requests cursor/primary DRMPlane from DRMCRTC (fails if there are none free - fall back to regular in caller?) -- or does it request a cursor/primary plane then attach it to the CRTC?
+DRMFramebuffer allocates memory via DRM API
+
+Cursor destructor destroys Bitmap
+~Bitmap destroys DRMFramebuffer
+~DRMFramebuffer releases DRMPlane (marks as unused)
